@@ -10,17 +10,71 @@ on:
 
 
 jobs:
-  build-kernel:
+  build:
     runs-on: ubuntu-latest
-
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_HARDLINK: "true"
+      TOKEN: ${{ secrets.TOKEN }}
     steps:
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 8192
+          temp-reserve-mb: 2048
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+
+      - name: Configure Git
+        run: |
+         git config --global user.name "build"
+         git config --global user.email "3620603668@qq.com"
+
+      # 1. 安装构建依赖（包括 ccache）
+      - name: Install Dependencies
+        run: |
+         sudo apt-get update
+         sudo apt-get install -y python3 git curl ccache libelf-dev
+
+      # 2. 恢复 ccache 缓存（按分支区分）
       - name: Restore ccache
         uses: actions/cache@v3
         with:
-          path: /home/runner/.ccache
-          key: ccache-${{ runner.os }}-${{ github.ref }}
-          restore-keys: |
-            ccache-${{ runner.os }}-
+         path: /home/runner/.ccache
+         key: ccache-${{ runner.os }}-${{ github.ref }}
+         restore-keys: |
+          ccache-${{ runner.os }}-
+
+      # 3. 设置 ccache 环境变量
+      - name: Setup ccache environment
+        run: |
+         echo "CCACHE_DIR=/home/runner/.ccache" >> $GITHUB_ENV
+         echo "CCACHE_MAXSIZE=8G" >> $GITHUB_ENV
+         echo "CCACHE_COMPILERCHECK=%compiler% -dumpmachine; %compiler% -dumpversion" >> $GITHUB_ENV
+         echo "CCACHE_NOHASHDIR=true" >> $GITHUB_ENV
+         echo "CCACHE_HARDLINK=true" >> $GITHUB_ENV
+         echo "/usr/lib/ccache" >> $GITHUB_PATH  # 将 /usr/lib/ccache 添加到 PAT
+         
+      - name: Show ccache stats
+        run: |
+         ccache -s || true
+
+      - name: Install repo tool
+        run: |
+         curl https://storage.googleapis.com/git-repo-downloads/repo > ~/repo
+         chmod a+x ~/repo
+         sudo mv ~/repo /usr/local/bin/repo
+
+      - name: Initialize repo and sync
+        run: |
+         mkdir kernel_workspace && cd kernel_workspace
+         repo init -u https://github.com/OnePlusOSS/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
+         repo --trace sync -c -j$(nproc --all) --no-tags
+         rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
+         rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
 
     - name: Set up build environment
       run: |
