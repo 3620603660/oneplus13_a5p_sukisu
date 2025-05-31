@@ -1,0 +1,49 @@
+name: Build OnePlus Ace 5 Pro Kernel
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-kernel:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up build environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libncurses5-dev libssl-dev libelf-dev
+
+    - name: Fetch submodules
+      run: |
+        git submodule update --init --recursive
+
+    - name: Configure kernel
+      run: |
+        make ARCH=arm64 oneplus_defconfig
+
+    - name: Modify build options
+      run: |
+        sed -i 's/KBUILD_CFLAGS :=.*/KBUILD_CFLAGS := -O3/' Makefile
+
+    - name: Build kernel
+      run: |
+        make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) 2>&1 | tee build.log
+
+    - name: Check build result
+      run: |
+        if [ ! -f arch/arm64/boot/Image ]; then
+          echo "Build failed"
+          exit 1
+        fi
+
+    - name: Upload kernel image
+      uses: actions/upload-artifact@v2
+      with:
+        name: kernel-image
+        path: arch/arm64/boot/Image
