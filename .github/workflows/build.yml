@@ -46,7 +46,7 @@ jobs:
         fi
 
     - name: Upload kernel image
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: kernel-image
         path: arch/arm64/boot/Image
